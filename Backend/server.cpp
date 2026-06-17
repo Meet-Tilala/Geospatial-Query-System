@@ -159,6 +159,38 @@ int main() {
         }
     });
 
+    // POST endpoint for k-nearest neighbors
+    CROW_ROUTE(app, "/api/k_nearest").methods("POST"_method)
+    ([](const crow::request& req) {
+        auto x = json::parse(req.body, nullptr, false);
+        if (x.is_discarded()) return crow::response(400, "Invalid JSON");
+
+        try {
+            double lat = x["lat"];
+            double lng = x["lng"];
+            int k = x.value("k", 1);
+            if (k <= 0) return crow::response(400, "k must be positive");
+
+            Point query = latLngToPoint(lat, lng);
+            vector<pair<double, Point>> results;
+
+            {
+                std::lock_guard<std::mutex> lock(tree_mutex);
+                results = rtree.k_nearest_neighbors(query, k);
+            }
+
+            json response = json::array();
+            for (const auto& [dist, pt] : results) {
+                json entry = pointToLatLng(pt);
+                entry["distance"] = dist;
+                response.push_back(entry);
+            }
+            return crow::response(response.dump());
+        } catch (const std::exception& e) {
+            return crow::response(400, "Invalid request data");
+        }
+    });
+
     app.port(3000).multithreaded().run();
     return 0;
 }

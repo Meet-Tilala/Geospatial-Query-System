@@ -85,7 +85,7 @@ public:
                 return;
             }
 
-            for(size_t i=0; i<children.size();i++){
+            for (size_t i = 0; i < children.size(); i++) {
                 children[i]->adjust_mbr();
             }
 
@@ -112,7 +112,7 @@ private:
     void delete_entry_from_leaf(Node* leaf, const Point& point) {
         auto it = find_if(leaf->entries.begin(), leaf->entries.end(),
             [&point](const Point& p) { return p == point; });
-        
+
         if (it != leaf->entries.end()) {
             leaf->entries.erase(it);
         }
@@ -128,14 +128,14 @@ private:
                 make_move_iterator(node2->children.begin()),
                 make_move_iterator(node2->children.end()));
         }
-        
+
         node1->adjust_mbr();
     }
 
     void remove_child(Node* parent, Node* child) {
         auto it = find_if(parent->children.begin(), parent->children.end(),
             [child](const unique_ptr<Node>& p) { return p.get() == child; });
-        
+
         if (it != parent->children.end()) {
             parent->children.erase(it);
         }
@@ -143,7 +143,7 @@ private:
 
     Node* find_sibling(Node* parent, Node* node) {
         if (parent->children.size() < MIN_ENTRIES) return nullptr;
-        
+
         for (size_t i = 0; i < parent->children.size(); i++) {
             if (parent->children[i].get() == node) {
                 if (i > 0) return parent->children[i-1].get();
@@ -165,8 +165,8 @@ private:
         return sqrt(dx * dx + dy * dy);
     }
 
-    void nearest_neighbor_recursive(Node* node, const Point& query_point, 
-                                  Point& nearest_point, double& min_dist) {
+    void nearest_neighbor_recursive(Node* node, const Point& query_point,
+                                    Point& nearest_point, double& min_dist) {
         if (min_dist_to_rect(query_point, node->mbr) >= min_dist) {
             return;
         }
@@ -185,16 +185,12 @@ private:
                 double dist = min_dist_to_rect(query_point, child->mbr);
                 node_distances.push_back({dist, child.get()});
             }
-            
-            sort(node_distances.begin(), node_distances.end());
-            
-            
 
-    for (const auto& pair : node_distances) {
-        const auto& dist = pair.first;
-        const auto& child = pair.second;
-                if (dist >= min_dist) break;
-                nearest_neighbor_recursive(child, query_point, nearest_point, min_dist);
+            sort(node_distances.begin(), node_distances.end());
+
+            for (const auto& nd : node_distances) {
+                if (nd.first >= min_dist) break;
+                nearest_neighbor_recursive(nd.second, query_point, nearest_point, min_dist);
             }
         }
     }
@@ -224,7 +220,7 @@ private:
 
     void split_node(Node* node) {
         if (node->is_leaf) {
-            if(node == root.get()){
+            if (node == root.get()) {
                 vector<Point> all_entries = std::move(node->entries);
                 node->entries.clear();
 
@@ -264,7 +260,7 @@ private:
                     new_node->entries.push_back(all_entries[i]);
                 }
 
-                Node* parent = find_parent(root.get(), node);//problem: find_parent returns null
+                Node* parent = find_parent(root.get(), node);
                 if (parent == root.get() && parent->children.empty()) {
                     auto new_root = make_unique<Node>(false);
                     new_root->children.push_back(std::move(root));
@@ -275,7 +271,7 @@ private:
                 }
             }
         } else {
-            if(node == root.get()){
+            if (node == root.get()) {
                 vector<unique_ptr<Node>> all_children = std::move(node->children);
                 node->children.clear();
 
@@ -331,21 +327,21 @@ private:
 
     Node* find_parent(Node* current, Node* child) {
         if (current == nullptr || current->is_leaf || current->children.empty()) {
+            return nullptr;
+        }
+
+        for (const auto& child_node : current->children) {
+            if (child_node.get() == child) {
+                return current;
+            }
+
+            Node* parent = find_parent(child_node.get(), child);
+            if (parent) {
+                return parent;
+            }
+        }
+
         return nullptr;
-    }
-
-    for (const auto& child_node : current->children) {
-        if (child_node.get() == child) {
-            return current;
-        }
-
-        Node* parent = find_parent(child_node.get(), child);
-        if (parent) {
-            return parent;
-        }
-    }
-
-    return nullptr;
     }
 
     void adjust_tree(Node* leaf) {
@@ -386,8 +382,6 @@ public:
         }
 
         adjust_tree(leaf);
-
-        //print();
     }
 
     vector<Point> search(const Rectangle& query_rect) const {
@@ -410,11 +404,9 @@ public:
             Node* sibling = find_sibling(parent, leaf);
 
             if (sibling && !sibling->is_full()) {
-                // Merge with sibling
                 merge_nodes(sibling, leaf);
                 remove_child(parent, leaf);
 
-                // Handle parent underflow
                 if (parent->is_underfull() && parent != root.get()) {
                     Node* grandparent = find_parent(root.get(), parent);
                     Node* parent_sibling = find_sibling(grandparent, parent);
@@ -425,7 +417,6 @@ public:
                     }
                 }
             } else {
-                // If the root node becomes underfull, promote one of the children to be the new root
                 if (root->children.size() == 1 && root->is_underfull()) {
                     root = std::move(root->children[0]);
                 }
@@ -440,8 +431,61 @@ public:
         double min_dist = numeric_limits<double>::max();
 
         nearest_neighbor_recursive(root.get(), query_point, nearest_point, min_dist);
-        
+
         return nearest_point;
+    }
+
+    // Branch-and-bound k-nearest neighbors.
+    // Uses a min-heap ordered by MBR minimum distance to visit the most-promising
+    // subtrees first, and a max-heap of size k to prune branches that cannot
+    // improve the current best results.
+    vector<pair<double, Point>> k_nearest_neighbors(const Point& query_point, int k) {
+        using DistPoint = pair<double, Point>;
+        using DistNode  = pair<double, Node*>;
+
+        // max-heap: top element is the farthest of the k nearest found so far
+        priority_queue<DistPoint> result_heap;
+        // min-heap: visit subtrees closest to query_point first
+        priority_queue<DistNode, vector<DistNode>, greater<DistNode>> node_queue;
+
+        node_queue.push({0.0, root.get()});
+
+        while (!node_queue.empty()) {
+            auto [node_min_dist, node] = node_queue.top();
+            node_queue.pop();
+
+            // Prune: once we have k results, any subtree farther than the
+            // current kth-closest point cannot improve the answer
+            if ((int)result_heap.size() == k && node_min_dist >= result_heap.top().first)
+                break;
+
+            if (node->is_leaf) {
+                for (const auto& entry : node->entries) {
+                    double d = calculate_distance(query_point, entry);
+                    if ((int)result_heap.size() < k) {
+                        result_heap.push({d, entry});
+                    } else if (d < result_heap.top().first) {
+                        result_heap.pop();
+                        result_heap.push({d, entry});
+                    }
+                }
+            } else {
+                for (const auto& child : node->children) {
+                    double d = min_dist_to_rect(query_point, child->mbr);
+                    if ((int)result_heap.size() < k || d < result_heap.top().first)
+                        node_queue.push({d, child.get()});
+                }
+            }
+        }
+
+        vector<DistPoint> results;
+        while (!result_heap.empty()) {
+            results.push_back(result_heap.top());
+            result_heap.pop();
+        }
+        // Return sorted by ascending distance
+        sort(results.begin(), results.end());
+        return results;
     }
 
 private:
@@ -481,77 +525,3 @@ private:
         }
     }
 };
-    /*
-
-int mmmain(){
-    RTree tree;
-
-    // Insert some sample points
-    tree.insert(Point(26.47514,73.11706));
-    tree.insert(Point(26.47492,73.11447));
-    tree.insert(Point(26.473132,73.113896));
-    tree.insert(Point(26.4714,73.11346));
-    tree.insert(Point(26.47112,73.11338));
-    tree.insert(Point(26.47378,73.11126));
-    tree.insert(Point(26.47688,73.11424));
-    tree.insert(Point(26.47675,73.11862));
-    tree.insert(Point(26.47834,73.11115));
-    tree.insert(Point(26.47925,73.11643));
-    // tree.insert(Point(26.48148,73.11956));
-    // tree.insert(Point(26.46923,73.11407));
-    // tree.insert(Point(26.46648,73.11514));
-    // tree.insert(Point(26.46642,73.11207));
-    // tree.insert(Point(26.47588,73.11043));
-    // tree.insert(Point(26.4615,73.11079));
-    // tree.insert(Point(26.45936,73.10945));
-    // tree.insert(Point(26.47107,73.11676));
-    // tree.insert(Point(26.48004,73.11724));
-    // tree.insert(Point(26.48574,73.12292));
-    
-    // Print the tree structure
-    tree.print();
-
-    // Delete some sample points
-    // tree.delete_point(Point(26.47514,73.11706));
-    // tree.delete_point(Point(26.47492,73.11447));
-    // tree.delete_point(Point(26.473132,73.113896));
-    tree.delete_point(Point(26.4714,73.11346));
-    //tree.delete_point(Point(26.47112,73.11338));
-    tree.delete_point(Point(26.47378,73.11126));
-    // tree.delete_point(Point(26.47688,73.11424));
-    // tree.delete_point(Point(26.47675,73.11862));
-    // tree.delete_point(Point(26.47834,73.11115));
-    // tree.delete_point(Point(26.47925,73.11643));
-    // tree.delete_point(Point(26.48148,73.11956));
-    // tree.delete_point(Point(26.46923,73.11407));
-    // tree.delete_point(Point(26.46648,73.11514));
-    // tree.delete_point(Point(26.46642,73.11207));
-    // tree.delete_point(Point(26.47588,73.11043));
-    // tree.delete_point(Point(26.4615,73.11079));
-    // tree.delete_point(Point(26.45936,73.10945));
-    // tree.delete_point(Point(26.47107,73.11676));
-    // tree.delete_point(Point(26.48004,73.11724));
-    // tree.delete_point(Point(26.48574,73.12292));
-
-    tree.print();
-
-    // Perform a range query
-    Rectangle query_rect(Point(26.472, 73.11), Point(26.477, 73.118));
-    auto results = tree.search(query_rect);
-    
-    cout << "\nPoints in query rectangle (" 
-              << query_rect.lower.x << "," << query_rect.lower.y << ") - ("
-              << query_rect.upper.x << "," << query_rect.upper.y << "):\n";
-              
-    for (const auto& point : results) {
-        cout << "(" << point.x << "," << point.y << ")\n";
-    }
-    
-    //nearNeighbour
-    Point query(26.47654,73.11323);
-    Point nearest = tree.nearest_neighbor(query);
-    cout << "Nearest point to (" << query.x << "," << query.y << ") is ("
-         << nearest.x << "," << nearest.y << ")\n";
-
-    return 0;
-}*/

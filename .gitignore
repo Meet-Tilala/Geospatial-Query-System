@@ -1,0 +1,26 @@
+# Build outputs
+build/
+*.o
+*.a
+*.so
+*.dylib
+
+# Compiled executables (no extension on Linux/macOS, .exe on Windows)
+Backend/RTrees
+Backend/RTrees.exe
+Backend/server
+Backend/benchmark
+Backend/benchmark.exe
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+CTestTestfile.cmake
+
+# IDE
+.vscode/
+.idea/
+*.user

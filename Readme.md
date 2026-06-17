@@ -1,189 +1,203 @@
 # Geospatial Query System
 
-A high-performance spatial data indexing and querying system built using R-trees, designed for efficient geographic point data management and spatial queries.
+A high-performance spatial indexing and querying system built with a custom **R-tree** in C++, exposed via a REST API ([Crow](https://crowcpp.org/) framework). Supports concurrent access, range queries, nearest-neighbor search, k-nearest-neighbor search, and polygon intersection.
+
+---
 
 ## Features
 
-- Spatial Indexing: Implements R-tree data structure for efficient spatial data organization
-- Real-time Operations: Supports concurrent access with thread-safe operations
-- RESTful API: Provides HTTP endpoints for various spatial operations
-- Query Operations:
-  - Point insertion
-  - Nearest neighbor search
-  - Range queries
-  - Polygon intersection queries
+| Feature | Endpoint |
+|---|---|
+| Insert a point | `POST /api/point` |
+| Nearest neighbor | `POST /api/nearest_neighbor` |
+| **k-nearest neighbors** | **`POST /api/k_nearest`** |
+| Range query | `POST /api/range_query` |
+| Polygon intersection | `POST /api/intersection` |
 
-## Technical Stack
+### R-Tree implementation
 
-- Backend: C++ with Crow framework for REST API
-- Data Structure: Custom R-tree implementation
-- Concurrency: Thread-safe operations using mutex locks
-- JSON Processing: nlohmann/json library for data handling
-
-
-## Setup and Installation
-
-  ### 1. Prerequisites
-     - C++ compiler with C++11 support (GCC 4.8+ or Clang 3.4+)
-     - CMake (3.8 or higher)
-     - Boost library (for Asio)
-     - OpenSSL development files (optional, for HTTPS support)
-     - nlohmann/json library
-
-  ### 2. Installing Dependencies
-
-  #### Ubuntu/Debian
-```bash
-# Install essential build tools
-sudo apt-get update
-sudo apt-get install build-essential cmake
-
-# Install Boost libraries
-sudo apt-get install libboost-all-dev
-
-# Install OpenSSL (optional, for HTTPS support)
-sudo apt-get install libssl-dev
-
-# Install nlohmann/json
-sudo apt-get install nlohmann-json3-dev
-```
-
-#### macOS
-```bash
-# Install build tools
-xcode-select --install
-
-# Install homebrew if not already installed
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install dependencies
-brew install cmake
-brew install boost
-brew install openssl
-brew install nlohmann-json
-```
-
-#### Windows
-1. Install Visual Studio with C++ development tools
-2. Install vcpkg package manager:
-```bash
-git clone https://github.com/Microsoft/vcpkg.git
-cd vcpkg
-bootstrap-vcpkg.bat
-vcpkg integrate install
-
-# Install dependencies
-vcpkg install boost:x64-windows
-vcpkg install openssl:x64-windows
-vcpkg install nlohmann-json:x64-windows
-```
-
-###3. Installing Crow Framework
-
-#### Method 1: Building from Source
-```bash
-# Clone Crow repository
-git clone https://github.com/CrowCpp/Crow.git
-cd Crow
-
-# Create and enter build directory
-mkdir build
-cd build
-
-# Configure and build
-cmake ..
-make
-sudo make install
-```
-
-### 4. Project Build Instructions
-
-```bash
-# Clone the repository
-git clone https://github.com/thatswhatmeetcoded/Geospatial-Query-System.git
-
-# Navigate to project directory
-cd geospatial-query-system
-
-# Create and enter build directory
-mkdir build
-cd build
-
-# Configure and build
-cmake ..
-make
-```
-
-### 5. CMake Configuration
-
-Create a `CMakeLists.txt` file in your project root:
-
-```cmake
-cmake_minimum_required(VERSION 3.8)
-project(GeospatialQuerySystem)
-
-# Set C++ standard
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Find required packages
-find_package(Boost REQUIRED COMPONENTS system)
-find_package(OpenSSL REQUIRED)
-find_package(nlohmann_json REQUIRED)
-
-# Add executable
-add_executable(server server.cpp)
-
-# Include directories
-target_include_directories(server PRIVATE 
-    ${Boost_INCLUDE_DIRS}
-    ${OPENSSL_INCLUDE_DIR}
-    include
-)
-
-# Link libraries
-target_link_libraries(server PRIVATE
-    ${Boost_LIBRARIES}
-    ${OPENSSL_LIBRARIES}
-    pthread
-    nlohmann_json::nlohmann_json
-)
-```
-
-### 6. Running the Server
-
-```bash
-# Run the server
-./server
-```
-
-The server will start on port 3000 by default.
-
-
-## Implementation Details
-
-### R-tree Structure
-- Maximum entries per node: 4
+- Maximum entries per node: 4 (configurable via `MAX_ENTRIES`)
 - Minimum entries per node: 2
-- Supports dynamic insertion and deletion
-- Auto-adjusting minimum bounding rectangles (MBRs)
+- Quadratic split heuristic
+- Dynamic insertion and deletion with MBR adjustment
+- 1-NN via recursive branch-and-bound
+- **k-NN via priority-queue branch-and-bound** — visits subtrees in order of minimum MBR distance and prunes branches that cannot improve the current k-th best result
 
-## Error Handling
+---
 
-The API returns appropriate HTTP status codes:
-- 200: Successful operation
-- 400: Invalid input data or malformed JSON
-- 500: Internal server error
+## Project structure
 
+```
+.
+├── Backend/
+│   ├── RTrees.cpp      # R-tree data structure + k-NN
+│   ├── server.cpp      # Crow REST API
+│   ├── benchmark.cpp   # R-Tree vs brute-force timing & k-NN correctness
+│   └── json.hpp        # nlohmann/json (vendored)
+├── Frontend/
+│   ├── index.html
+│   ├── script.js
+│   └── style.css
+├── CMakeLists.txt
+└── Readme.md
+```
+
+---
+
+## Prerequisites
+
+| Tool | Minimum version |
+|---|---|
+| C++ compiler | C++17 (GCC 7+, Clang 5+, MSVC 2017+) |
+| CMake | 3.8 |
+| Boost (Asio) | 1.66 |
+| [Crow](https://github.com/CrowCpp/Crow) | latest |
+| OpenSSL | optional (HTTPS) |
+
+### Install dependencies
+
+**Ubuntu / Debian**
+```bash
+sudo apt update
+sudo apt install build-essential cmake libboost-all-dev libssl-dev
+```
+
+**macOS (Homebrew)**
+```bash
+brew install cmake boost openssl
+```
+
+**Windows (vcpkg)**
+```powershell
+vcpkg install boost:x64-windows openssl:x64-windows
+vcpkg integrate install
+```
+
+### Install Crow
+
+```bash
+git clone https://github.com/CrowCpp/Crow.git
+cd Crow && mkdir build && cd build
+cmake .. && make && sudo make install
+```
+
+---
+
+## Build
+
+```bash
+git clone https://github.com/Meet-Tilala/Geospatial-Query-System.git
+cd Geospatial-Query-System
+
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+This produces two binaries inside `build/`:
+
+| Binary | Purpose |
+|---|---|
+| `server` | REST API server (port 3000) |
+| `benchmark` | Timing & correctness suite |
+
+---
+
+## Run
+
+**Server**
+```bash
+./build/server
+```
+The server starts on `http://localhost:3000`.
+
+**Benchmark**
+```bash
+./build/benchmark
+```
+Inserts 50 000 random points, then runs 100 range queries and 100 k-NN queries (k = 10) comparing R-tree vs brute-force, followed by a correctness check.
+
+---
+
+## API reference
+
+All requests and responses use JSON (`Content-Type: application/json`).
+
+### `POST /api/point`
+Insert a geographic point.
+```json
+{ "lat": 26.4751, "lng": 73.1170 }
+```
+Response: `200 OK`
+
+---
+
+### `POST /api/nearest_neighbor`
+Find the single nearest stored point to a query location.
+```json
+{ "lat": 26.4765, "lng": 73.1132 }
+```
+```json
+{ "lat": 26.4751, "lng": 73.1170 }
+```
+
+---
+
+### `POST /api/k_nearest`
+Find the **k nearest** stored points, returned sorted by ascending distance.
+```json
+{ "lat": 26.4765, "lng": 73.1132, "k": 5 }
+```
+```json
+[
+  { "lat": 26.4751, "lng": 73.1170, "distance": 0.0023 },
+  { "lat": 26.4769, "lng": 73.1142, "distance": 0.0041 },
+  ...
+]
+```
+
+---
+
+### `POST /api/range_query`
+Return all points within an axis-aligned bounding box.
+```json
+{ "min_lat": 26.472, "min_lng": 73.110, "max_lat": 26.477, "max_lng": 73.118 }
+```
+```json
+[{ "lat": 26.4751, "lng": 73.1170 }, ...]
+```
+
+---
+
+### `POST /api/intersection`
+Return all stored points that fall inside a polygon (ray-casting algorithm).
+```json
+{ "points": [[26.472, 73.110], [26.477, 73.110], [26.477, 73.118], [26.472, 73.118]] }
+```
+```json
+[{ "lat": 26.4751, "lng": 73.1170 }, ...]
+```
+
+---
+
+## HTTP status codes
+
+| Code | Meaning |
+|---|---|
+| 200 | Success |
+| 400 | Invalid or malformed input |
+| 500 | Internal server error |
+
+---
 
 ## Limitations
 
-- Currently supports 2D spatial data only
-- Fixed maximum node capacity
-- In-memory storage (no persistence)
+- 2D spatial data only
+- In-memory storage (no persistence across restarts)
+- Fixed node capacity (change `MAX_ENTRIES` in `RTrees.cpp` and recompile)
 
+---
 
 ## Contact
 
-Meet Tilala
-meettilala2005@gmail.com
+Meet Tilala — meettilala2005@gmail.com
